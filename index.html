@@ -3,736 +3,1097 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Détecteur d'État Émotionnel</title>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <title>Détecteur d'État Émotionnel Intelligent</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <style>
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            padding: 20px;
+        }
+        .custom-checkbox {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #3b82f6;
+            border-radius: 4px;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .custom-checkbox:checked {
+            background-color: #3b82f6;
+            border-color: #3b82f6;
+        }
+        .custom-checkbox:checked::after {
+            content: '✓';
+            position: absolute;
+            top: -2px;
+            left: 3px;
+            color: white;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
     <div id="root"></div>
-    
+
     <script type="text/babel">
-        const { useState, useEffect } = React;
-        
-        // Icônes Lucide simplifiées
-        const Brain = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-        );
-        
-        const CheckCircle = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-        );
-        
-        const AlertCircle = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-        );
-        
-        const RotateCcw = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M1 4v6h6M3.51 15a9 9 0 102.13-9.36L1 10" />
-            </svg>
-        );
-        
-        const History = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-        );
-        
-        const TrendingUp = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-            </svg>
-        );
-        
-        const Calendar = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-        );
+        const { useState, useEffect, useRef } = React;
 
-        const EmotionDetector = () => {
-          const [currentQuestion, setCurrentQuestion] = useState(0);
-          const [answers, setAnswers] = useState([]);
-          const [phase, setPhase] = useState('questioning');
-          const [result, setResult] = useState(null);
-          const [customAnswer, setCustomAnswer] = useState('');
-          const [showCustomInput, setShowCustomInput] = useState(false);
-          const [learningData, setLearningData] = useState(null);
-          const [history, setHistory] = useState([]);
-          const [learningDB, setLearningDB] = useState([]);
-          const [showTrends, setShowTrends] = useState(false);
+        // Configuration Google Drive
+        const CLIENT_ID = '829427849836-a1pi07g2qgt73874te51at84d62jfqk7.apps.googleusercontent.com';
+        const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+        const DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'];
 
-          useEffect(() => {
-            const savedHistory = localStorage.getItem('emotion-history');
-            const savedLearning = localStorage.getItem('emotion-learning');
-            
-            if (savedHistory) {
-              setHistory(JSON.parse(savedHistory));
+        // Questions du questionnaire
+        const questions = [
+            {
+                id: 'pain',
+                question: "Ressentez-vous des douleurs physiques ?",
+                type: 'single',
+                options: [
+                    "Aucune gêne",
+                    "Légère tension, supportable",
+                    "Douleur modérée mais gérable",
+                    "Douleur marquée qui me préoccupe",
+                    "Douleur intense difficile à ignorer"
+                ]
+            },
+            {
+                id: 'sensations',
+                question: "Quelles sensations corporelles ressentez-vous ? (plusieurs choix possibles)",
+                type: 'multiple',
+                options: [
+                    "Fatigue générale",
+                    "Maux de tête",
+                    "Troubles digestifs",
+                    "Tensions cervicales",
+                    "Courbatures",
+                    "Vertiges",
+                    "Palpitations",
+                    "Frissons",
+                    "Bouffées de chaleur"
+                ]
+            },
+            {
+                id: 'vitality',
+                question: "Comment évaluez-vous votre vitalité générale ?",
+                type: 'single',
+                options: [
+                    "Affaibli comme si je couvais quelque chose",
+                    "Fatigué mais fonctionnel",
+                    "État moyen, ni bien ni mal",
+                    "Plutôt en forme",
+                    "Débordant d'énergie"
+                ]
+            },
+            {
+                id: 'energy',
+                question: "Quel est votre niveau d'énergie ?",
+                type: 'single',
+                options: [
+                    "Complètement à plat",
+                    "Peu d'énergie, tout demande un effort",
+                    "Énergie moyenne, je fais le nécessaire",
+                    "Bonne énergie, je suis actif",
+                    "Plein d'énergie, j'ai envie d'entreprendre"
+                ]
+            },
+            {
+                id: 'emotions',
+                question: "Quelles émotions ressentez-vous en ce moment ? (plusieurs choix possibles)",
+                type: 'multiple',
+                options: [
+                    "Tristesse",
+                    "Anxiété",
+                    "Colère",
+                    "Joie",
+                    "Confusion",
+                    "Ennui",
+                    "Sérénité",
+                    "Frustration",
+                    "Espoir",
+                    "Nostalgie"
+                ]
+            },
+            {
+                id: 'atmosphere',
+                question: "Comment décririez-vous votre atmosphère émotionnelle dominante ?",
+                type: 'single',
+                options: [
+                    "Sombre, tout semble difficile",
+                    "Grise, sans couleur particulière",
+                    "Neutre, ni positive ni négative",
+                    "Plutôt lumineuse avec quelques nuages",
+                    "Radieuse, tout semble possible"
+                ]
+            },
+            {
+                id: 'physical_state',
+                question: "Comment est votre état physique/posture ?",
+                type: 'single',
+                options: [
+                    "Crispé, rigide",
+                    "Tendu par endroits",
+                    "Normal, sans tension particulière",
+                    "Plutôt détendu",
+                    "Parfaitement relâché et fluide"
+                ]
+            },
+            {
+                id: 'mental_flow',
+                question: "Comment décririez-vous votre flux mental ?",
+                type: 'single',
+                options: [
+                    "Brouillard confus",
+                    "Pensées agitées, difficiles à contrôler",
+                    "Flux normal avec quelques perturbations",
+                    "Plutôt clair et organisé",
+                    "Lac paisible cristallin"
+                ]
+            },
+            {
+                id: 'social',
+                question: "Comment vous sentez-vous vis-à-vis des autres ?",
+                type: 'single',
+                options: [
+                    "J'évite le contact",
+                    "Je tolère mais sans plus",
+                    "Neutre, ça dépend des personnes",
+                    "Plutôt ouvert aux échanges",
+                    "J'ai envie de connecter"
+                ]
+            },
+            {
+                id: 'motivation',
+                question: "Quel est votre niveau de motivation ?",
+                type: 'single',
+                options: [
+                    "Inexistante",
+                    "Très faible, je me force",
+                    "Moyenne, je fais ce qu'il faut",
+                    "Bonne, j'ai envie d'avancer",
+                    "Forte, j'ai des projets"
+                ]
+            },
+            {
+                id: 'time_perception',
+                question: "Comment percevez-vous le temps qui passe ?",
+                type: 'single',
+                options: [
+                    "Tout va trop vite, je suis dépassé",
+                    "Le temps file et je cours après",
+                    "Rythme normal, je suis dans le flux",
+                    "J'ai le temps de faire ce que je veux",
+                    "Parfaitement synchronisé avec mon rythme"
+                ]
             }
-            if (savedLearning) {
-              setLearningDB(JSON.parse(savedLearning));
-            }
-          }, []);
+        ];
 
-          useEffect(() => {
-            if (history.length > 0) {
-              localStorage.setItem('emotion-history', JSON.stringify(history));
-            }
-          }, [history]);
-
-          useEffect(() => {
-            if (learningDB.length > 0) {
-              localStorage.setItem('emotion-learning', JSON.stringify(learningDB));
-            }
-          }, [learningDB]);
-
-          const questions = [
+        // États possibles et leurs conditions
+        const possibleStates = [
             {
-              id: 0,
-              text: "Ressentez-vous des douleurs ou inconforts physiques ?",
-              options: ["Aucune douleur", "Douleur légère", "Douleur modérée", "Douleur forte", "Douleur très intense"],
-              category: "pain"
-            },
-            {
-              id: 1,
-              text: "Quelle sensation physique domine actuellement ?",
-              options: ["Fatigue", "Mal de tête", "Mal de ventre", "Tension musculaire", "Aucune sensation particulière"],
-              category: "sensation"
-            },
-            {
-              id: 2,
-              text: "Votre état de santé général aujourd'hui :",
-              options: ["Je me sens malade", "Un peu patraque", "Normal", "En forme", "Très en forme"],
-              category: "health"
-            },
-            {
-              id: 3,
-              text: "En ce moment, votre niveau d'énergie est :",
-              options: ["Épuisé(e)", "Très fatigué(e)", "Fatigué(e)", "Normal", "Énergique"],
-              category: "energy"
-            },
-            {
-              id: 4,
-              text: "Votre humeur générale penche vers :",
-              options: ["Très négative", "Négative", "Neutre", "Positive", "Très positive"],
-              category: "mood"
-            },
-            {
-              id: 5,
-              text: "Votre corps vous semble :",
-              options: ["Très tendu", "Tendu", "Normal", "Détendu", "Très détendu"],
-              category: "physical"
-            },
-            {
-              id: 6,
-              text: "Vos pensées sont :",
-              options: ["Très confuses", "Agitées", "Normales", "Claires", "Très claires"],
-              category: "mental"
-            },
-            {
-              id: 7,
-              text: "Face aux autres, vous vous sentez :",
-              options: ["Très fermé(e)", "Fermé(e)", "Neutre", "Ouvert(e)", "Très sociable"],
-              category: "social"
-            },
-            {
-              id: 8,
-              text: "Vous ressentez principalement :",
-              options: ["Souffrance physique", "Tristesse", "Anxiété", "Colère", "Joie"],
-              category: "emotion"
-            }
-          ];
-
-          const findSimilarPatterns = (currentAnswers) => {
-            return learningDB.filter(entry => {
-              const similarity = entry.answers.reduce((acc, answer, index) => {
-                return acc + (Math.abs(answer - currentAnswers[index]) <= 1 ? 1 : 0);
-              }, 0);
-              return similarity >= 6;
-            });
-          };
-
-          const analyzeState = () => {
-            const profile = {
-              pain: answers[0] || 2,
-              sensation: answers[1] || 4,
-              health: answers[2] || 2,
-              energy: answers[3] || 2,
-              mood: answers[4] || 2,
-              physical: answers[5] || 2,
-              mental: answers[6] || 2,
-              social: answers[7] || 2,
-              emotion: answers[8] || 2
-            };
-
-            const similarPatterns = findSimilarPatterns(answers);
-            if (similarPatterns.length > 0) {
-              const mostRecentPattern = similarPatterns[similarPatterns.length - 1];
-              return {
-                name: mostRecentPattern.correctState,
-                description: `État appris : ${mostRecentPattern.correctState}`,
-                confidence: Math.min(95, 70 + similarPatterns.length * 5),
-                suggestions: getAdaptedSuggestions(mostRecentPattern.correctState),
-                isLearned: true
-              };
-            }
-
-            let state = {};
-
-            if (profile.pain >= 3) {
-              if (profile.sensation === 0) {
-                state = {
-                  name: "Fatigue intense avec douleur",
-                  description: "Vous ressentez une fatigue importante accompagnée de douleurs physiques significatives.",
-                  confidence: 90,
-                  suggestions: ["Repos immédiat", "Consulter un médecin", "Hydratation", "Éviter les efforts"]
-                };
-              } else if (profile.sensation === 1) {
-                state = {
-                  name: "Céphalées importantes",
-                  description: "Vous souffrez de maux de tête intenses qui dominent votre état actuel.",
-                  confidence: 95,
-                  suggestions: ["Repos dans l'obscurité", "Hydratation", "Antalgique si nécessaire", "Éviter les écrans"]
-                };
-              } else if (profile.sensation === 2) {
-                state = {
-                  name: "Douleurs abdominales",
-                  description: "Des douleurs au ventre affectent significativement votre bien-être.",
-                  confidence: 90,
-                  suggestions: ["Repos digestif", "Boissons chaudes", "Position fœtale", "Surveiller l'évolution"]
-                };
-              } else {
-                state = {
-                  name: "Douleur physique dominante",
-                  description: "Vous traversez un épisode douloureux qui impacte votre état général.",
-                  confidence: 85,
-                  suggestions: ["Gestion de la douleur", "Repos", "Consulter si persistant", "Techniques de relaxation"]
-                };
-              }
-            } else if (profile.health <= 1 || (profile.energy <= 1 && profile.sensation === 0)) {
-              state = {
-                name: "État grippal/malade",
-                description: "Vous semblez en période de maladie avec fatigue et malaise général.",
+                id: 'migraine',
+                name: "Syndrome migraineux avec nausées",
+                description: "Vous semblez souffrir d'un épisode migraineux accompagné de troubles digestifs. Votre corps réclame du repos et des soins adaptés.",
                 confidence: 85,
-                suggestions: ["Repos au lit", "Hydratation abondante", "Surveiller la température", "Consulter si aggravation"]
-              };
-            } else if (profile.sensation === 0 && profile.energy <= 1) {
-              state = {
-                name: "Épuisement/Fatigue chronique",
-                description: "La fatigue domine complètement votre état, vous vous sentez vidé(e).",
-                confidence: 90,
-                suggestions: ["Sommeil prioritaire", "Alimentation légère", "Pas d'effort", "Vérifier les causes"]
-              };
-            } else if (profile.sensation === 3 && profile.physical <= 1) {
-              state = {
-                name: "Tension musculaire/Stress corporel",
-                description: "Votre corps accumule les tensions, créant un inconfort musculaire.",
-                confidence: 85,
-                suggestions: ["Étirements doux", "Massage", "Bain chaud", "Exercices de relaxation"]
-              };
-            } else if (profile.emotion === 0) {
-              state = {
-                name: "Souffrance physique prédominante",
-                description: "La douleur physique domine vos sensations et votre état émotionnel.",
-                confidence: 95,
-                suggestions: ["Prise en charge de la douleur", "Soutien médical", "Repos adapté", "Techniques d'apaisement"]
-              };
-            } else if (profile.energy <= 1 && profile.mood <= 1) {
-              state = {
-                name: "État dépressif avec fatigue",
-                description: "Vous traversez une période difficile mêlant fatigue et moral bas.",
+                conditions: (answers) => {
+                    return answers.pain >= 3 && 
+                           answers.sensations.includes("Maux de tête") && 
+                           answers.sensations.includes("Troubles digestifs");
+                },
+                suggestions: [
+                    "Reposez-vous dans un endroit calme et sombre",
+                    "Hydratez-vous régulièrement par petites gorgées",
+                    "Évitez les écrans et les stimuli visuels",
+                    "Consultez un médecin si les symptômes persistent"
+                ]
+            },
+            {
+                id: 'flu_like',
+                name: "État pseudo-grippal multi-symptomatique",
+                description: "Votre corps montre plusieurs signes d'un état infectieux ou d'épuisement profond. Il est temps de prendre soin de vous.",
                 confidence: 80,
-                suggestions: ["Soutien psychologique", "Activités très douces", "Lumière naturelle", "Contact social progressif"]
-              };
-            } else if (profile.mental <= 1 && profile.emotion === 2) {
-              state = {
-                name: "Anxiété/Confusion mentale",
-                description: "Vos pensées sont confuses, créant un état d'anxiété et d'agitation.",
-                confidence: 80,
-                suggestions: ["Exercices de respiration", "Méditation courte", "Réduire les stimuli", "Activité apaisante"]
-              };
-            } else if (profile.mood >= 3 && profile.energy >= 3 && profile.pain <= 1) {
-              state = {
-                name: "État positif et énergique",
-                description: "Vous êtes dans une bonne dynamique, sans douleur particulière.",
+                conditions: (answers) => {
+                    const symptoms = answers.sensations;
+                    return answers.vitality <= 1 && 
+                           symptoms.length >= 4 &&
+                           (symptoms.includes("Fatigue générale") || symptoms.includes("Courbatures"));
+                },
+                suggestions: [
+                    "Prenez votre température et surveillez votre état",
+                    "Reposez-vous autant que possible",
+                    "Mangez léger et hydratez-vous bien",
+                    "Consultez un professionnel de santé si nécessaire"
+                ]
+            },
+            {
+                id: 'depression_anxiety',
+                name: "État dépressivo-anxieux mixte",
+                description: "Vous traversez une période difficile où tristesse et anxiété se mélangent, affectant votre énergie et motivation.",
+                confidence: 75,
+                conditions: (answers) => {
+                    const emotions = answers.emotions;
+                    return emotions.includes("Tristesse") && 
+                           emotions.includes("Anxiété") &&
+                           answers.motivation <= 1 &&
+                           answers.atmosphere <= 1;
+                },
+                suggestions: [
+                    "Reconnaissez vos émotions sans jugement",
+                    "Pratiquez des exercices de respiration",
+                    "Maintenez une routine quotidienne simple",
+                    "N'hésitez pas à demander de l'aide professionnelle"
+                ]
+            },
+            {
+                id: 'stress_overload',
+                name: "Stress physico-mental avec surcharge",
+                description: "Votre système est en surcharge, manifestant à la fois des tensions physiques et mentales importantes.",
+                confidence: 78,
+                conditions: (answers) => {
+                    return answers.physical_state <= 1 &&
+                           answers.mental_flow <= 1 &&
+                           answers.time_perception <= 1 &&
+                           answers.sensations.includes("Tensions cervicales");
+                },
+                suggestions: [
+                    "Faites des pauses régulières dans votre journée",
+                    "Pratiquez des étirements doux",
+                    "Établissez des priorités claires",
+                    "Essayez la méditation ou la relaxation guidée"
+                ]
+            },
+            {
+                id: 'positive_energy',
+                name: "Dynamisme positif et énergie créatrice",
+                description: "Vous êtes dans une excellente phase d'énergie positive, avec une bonne vitalité et un mental clair.",
                 confidence: 90,
-                suggestions: ["Profiter de cette énergie", "Activités plaisantes", "Partage social", "Projets créatifs"]
-              };
-            } else {
-              const sensationLabels = ["fatigue", "maux de tête", "problèmes digestifs", "tensions musculaires", "aucune sensation"];
-              const dominantSensation = sensationLabels[profile.sensation] || "sensations variées";
-              
-              state = {
-                name: `État mixte avec ${dominantSensation}`,
-                description: `Votre état présente plusieurs facettes avec une dominante de ${dominantSensation}.`,
+                conditions: (answers) => {
+                    return answers.energy >= 4 &&
+                           answers.vitality >= 4 &&
+                           answers.motivation >= 4 &&
+                           answers.atmosphere >= 4;
+                },
+                suggestions: [
+                    "Profitez de cette énergie pour vos projets",
+                    "Partagez votre positivité avec votre entourage",
+                    "Lancez-vous dans de nouvelles activités",
+                    "Notez vos idées créatives"
+                ]
+            },
+            {
+                id: 'balanced',
+                name: "Équilibre harmonieux corps-esprit",
+                description: "Vous êtes dans un état d'équilibre satisfaisant, avec une bonne harmonie entre vos dimensions physique et mentale.",
+                confidence: 88,
+                conditions: (answers) => {
+                    const emotionsCount = answers.emotions.length;
+                    return answers.pain <= 1 &&
+                           answers.energy >= 3 &&
+                           answers.mental_flow >= 4 &&
+                           answers.emotions.includes("Sérénité") &&
+                           emotionsCount <= 3;
+                },
+                suggestions: [
+                    "Maintenez vos bonnes habitudes actuelles",
+                    "Continuez vos pratiques de bien-être",
+                    "Restez à l'écoute de vos besoins",
+                    "Cultivez cette harmonie au quotidien"
+                ]
+            },
+            {
+                id: 'emotional_turmoil',
+                name: "Tumulte émotionnel complexe",
+                description: "Vous vivez un tourbillon d'émotions contradictoires qui créent de la confusion et de l'instabilité.",
+                confidence: 70,
+                conditions: (answers) => {
+                    return answers.emotions.length >= 3 &&
+                           answers.emotions.includes("Confusion") &&
+                           answers.mental_flow <= 2;
+                },
+                suggestions: [
+                    "Prenez du temps pour identifier chaque émotion",
+                    "Écrivez vos pensées pour clarifier",
+                    "Parlez à quelqu'un de confiance",
+                    "Acceptez la complexité de vos ressentis"
+                ]
+            },
+            {
+                id: 'neutral',
+                name: "État neutre de transition",
+                description: "Vous êtes dans une phase neutre, ni particulièrement positive ni négative, possiblement en transition.",
                 confidence: 65,
-                suggestions: ["Auto-observation", "Prendre soin de soi", "Adapter selon les sensations", "Soutien si nécessaire"]
-              };
+                conditions: (answers) => {
+                    return answers.atmosphere === 2 &&
+                           answers.energy === 2 &&
+                           answers.motivation === 2;
+                },
+                suggestions: [
+                    "Observez cette neutralité sans jugement",
+                    "C'est peut-être le moment de faire le point",
+                    "Explorez doucement de nouvelles activités",
+                    "Restez ouvert aux changements à venir"
+                ]
             }
+        ];
 
-            return state;
-          };
+        function EmotionDetectorApp() {
+            const [currentTab, setCurrentTab] = useState('analyze');
+            const [currentQuestion, setCurrentQuestion] = useState(0);
+            const [answers, setAnswers] = useState({});
+            const [multipleSelections, setMultipleSelections] = useState([]);
+            const [showResult, setShowResult] = useState(false);
+            const [detectedState, setDetectedState] = useState(null);
+            const [history, setHistory] = useState([]);
+            const [learningDB, setLearningDB] = useState([]);
+            const [customAnswersDB, setCustomAnswersDB] = useState({});
+            const [showCustomAnswer, setShowCustomAnswer] = useState(false);
+            const [customAnswerText, setCustomAnswerText] = useState('');
+            const [driveConnected, setDriveConnected] = useState(false);
+            const [isSaving, setIsSaving] = useState(false);
+            const saveTimeout = useRef(null);
 
-          const getAdaptedSuggestions = (stateName) => {
-            const suggestionMap = {
-              "Fatigue intense avec douleur": ["Repos immédiat", "Consulter un médecin", "Hydratation"],
-              "Céphalées importantes": ["Repos dans l'obscurité", "Hydratation", "Éviter les écrans"],
-              "Douleurs abdominales": ["Repos digestif", "Boissons chaudes", "Position fœtale"],
-              "État grippal/malade": ["Repos au lit", "Hydratation abondante", "Surveiller la température"],
-              "Épuisement/Fatigue chronique": ["Sommeil prioritaire", "Alimentation légère", "Pas d'effort"],
-            };
-            return suggestionMap[stateName] || ["Repos", "Auto-observation", "Soutien si nécessaire"];
-          };
+            // Initialisation
+            useEffect(() => {
+                loadLocalData();
+                initializeGoogleDrive();
+            }, []);
 
-          const handleAnswer = (answerIndex, customText = null) => {
-            const newAnswers = [...answers];
-            if (customText) {
-              newAnswers[currentQuestion] = customText;
-            } else {
-              newAnswers[currentQuestion] = answerIndex;
-            }
-            setAnswers(newAnswers);
-            setShowCustomInput(false);
-            setCustomAnswer('');
+            // Sauvegarde automatique
+            useEffect(() => {
+                if (saveTimeout.current) {
+                    clearTimeout(saveTimeout.current);
+                }
+                saveTimeout.current = setTimeout(() => {
+                    saveData();
+                }, 2000);
+            }, [history, learningDB, customAnswersDB]);
 
-            if (currentQuestion < questions.length - 1) {
-              setCurrentQuestion(currentQuestion + 1);
-            } else {
-              const detectedState = analyzeState();
-              setResult(detectedState);
-              setPhase('result');
-            }
-          };
-
-          const handleCustomSubmit = () => {
-            if (customAnswer.trim()) {
-              handleAnswer(null, customAnswer.trim());
-            }
-          };
-
-          const handleResultFeedback = (isCorrect) => {
-            const newHistoryEntry = {
-              id: Date.now(),
-              date: new Date().toISOString(),
-              state: result.name,
-              confidence: result.confidence,
-              isCorrect: isCorrect,
-              answers: [...answers],
-              isLearned: result.isLearned || false
-            };
-
-            setHistory(prev => [newHistoryEntry, ...prev]);
-
-            if (!isCorrect) {
-              setLearningData({
-                answers: answers,
-                wrongResult: result,
-                timestamp: new Date(),
-                historyId: newHistoryEntry.id
-              });
-              setPhase('learning');
-            } else {
-              restart();
-            }
-          };
-
-          const handleLearning = (correctState) => {
-            const newLearningEntry = {
-              answers: learningData.answers,
-              correctState: correctState,
-              wrongResult: learningData.wrongResult.name,
-              timestamp: learningData.timestamp,
-              id: Date.now()
+            const loadLocalData = () => {
+                try {
+                    const savedData = localStorage.getItem('emotionDetectorData');
+                    if (savedData) {
+                        const data = JSON.parse(savedData);
+                        setHistory(data.history || []);
+                        setLearningDB(data.learningDB || []);
+                        setCustomAnswersDB(data.customAnswersDB || {});
+                    }
+                } catch (error) {
+                    console.error('Erreur lors du chargement des données locales:', error);
+                }
             };
 
-            setLearningDB(prev => [...prev, newLearningEntry]);
+            const saveData = async () => {
+                const data = {
+                    history,
+                    learningDB,
+                    customAnswersDB,
+                    lastSync: new Date().toISOString(),
+                    version: '1.0'
+                };
 
-            setHistory(prev => prev.map(entry => 
-              entry.id === learningData.historyId 
-                ? { ...entry, correctedState: correctState }
-                : entry
-            ));
+                // Sauvegarde locale
+                localStorage.setItem('emotionDetectorData', JSON.stringify(data));
 
-            alert(`Merci ! J'ai appris que pour ce profil de réponses, l'état correct est "${correctState}".`);
-            restart();
-          };
-
-          const restart = () => {
-            setCurrentQuestion(0);
-            setAnswers([]);
-            setPhase('questioning');
-            setResult(null);
-            setLearningData(null);
-            setShowCustomInput(false);
-            setCustomAnswer('');
-          };
-
-          const analyzeTrends = () => {
-            if (history.length === 0) return null;
-
-            const last7Days = history.filter(entry => {
-              const entryDate = new Date(entry.date);
-              const weekAgo = new Date();
-              weekAgo.setDate(weekAgo.getDate() - 7);
-              return entryDate >= weekAgo;
-            });
-
-            const last30Days = history.filter(entry => {
-              const entryDate = new Date(entry.date);
-              const monthAgo = new Date();
-              monthAgo.setDate(monthAgo.getDate() - 30);
-              return entryDate >= monthAgo;
-            });
-
-            const stateFrequency = {};
-            last30Days.forEach(entry => {
-              const state = entry.correctedState || entry.state;
-              stateFrequency[state] = (stateFrequency[state] || 0) + 1;
-            });
-
-            const mostFrequent = Object.entries(stateFrequency)
-              .sort(([,a], [,b]) => b - a)[0];
-
-            return {
-              totalAnalyses: history.length,
-              last7Days: last7Days.length,
-              last30Days: last30Days.length,
-              mostFrequentState: mostFrequent ? mostFrequent[0] : "Aucun",
-              mostFrequentCount: mostFrequent ? mostFrequent[1] : 0,
-              learningProgress: learningDB.length,
-              accuracy: history.length > 0 ? Math.round((history.filter(h => h.isCorrect).length / history.length) * 100) : 0
+                // Sauvegarde Google Drive si connecté
+                if (driveConnected && window.gapi && window.gapi.client) {
+                    setIsSaving(true);
+                    try {
+                        await saveToGoogleDrive(data);
+                    } catch (error) {
+                        console.error('Erreur lors de la sauvegarde sur Drive:', error);
+                    }
+                    setIsSaving(false);
+                }
             };
-          };
 
-          const formatDate = (dateString) => {
-            const date = new Date(dateString);
-            return date.toLocaleString('fr-FR', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            });
-          };
+            const initializeGoogleDrive = () => {
+                window.gapi.load('client:auth2', () => {
+                    window.gapi.client.init({
+                        clientId: CLIENT_ID,
+                        discoveryDocs: DISCOVERY_DOCS,
+                        scope: SCOPES
+                    }).then(() => {
+                        const authInstance = window.gapi.auth2.getAuthInstance();
+                        setDriveConnected(authInstance.isSignedIn.get());
+                        authInstance.isSignedIn.listen(setDriveConnected);
+                        
+                        if (authInstance.isSignedIn.get()) {
+                            loadFromGoogleDrive();
+                        }
+                    });
+                });
+            };
 
-          const currentQ = questions[currentQuestion];
-          const trends = analyzeTrends();
+            const connectGoogleDrive = () => {
+                window.gapi.auth2.getAuthInstance().signIn();
+            };
 
-          return (
-            <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg">
-              <div className="text-center mb-8">
-                <Brain size={48} className="mx-auto mb-4 text-blue-600" />
-                <h1 className="text-3xl font-bold text-gray-800 mb-2">Détecteur d'État Avancé</h1>
-                <p className="text-gray-600">Analyseur intelligent qui apprend de vos retours</p>
+            const saveToGoogleDrive = async (data) => {
+                const boundary = '-------314159265358979323846';
+                const delimiter = "\r\n--" + boundary + "\r\n";
+                const close_delim = "\r\n--" + boundary + "--";
+
+                const metadata = {
+                    'name': 'emotion-detector-data.json',
+                    'mimeType': 'application/json',
+                    'parents': ['appDataFolder']
+                };
+
+                const multipartRequestBody =
+                    delimiter +
+                    'Content-Type: application/json\r\n\r\n' +
+                    JSON.stringify(metadata) +
+                    delimiter +
+                    'Content-Type: application/json\r\n\r\n' +
+                    JSON.stringify(data) +
+                    close_delim;
+
+                // Vérifier si le fichier existe déjà
+                const response = await window.gapi.client.drive.files.list({
+                    q: "name='emotion-detector-data.json'",
+                    spaces: 'appDataFolder',
+                    fields: 'files(id, name)'
+                });
+
+                const files = response.result.files;
+                if (files && files.length > 0) {
+                    // Mettre à jour le fichier existant
+                    await window.gapi.client.request({
+                        'path': '/upload/drive/v3/files/' + files[0].id,
+                        'method': 'PATCH',
+                        'params': {'uploadType': 'multipart'},
+                        'headers': {
+                            'Content-Type': 'multipart/related; boundary="' + boundary + '"'
+                        },
+                        'body': multipartRequestBody
+                    });
+                } else {
+                    // Créer un nouveau fichier
+                    await window.gapi.client.request({
+                        'path': '/upload/drive/v3/files',
+                        'method': 'POST',
+                        'params': {'uploadType': 'multipart'},
+                        'headers': {
+                            'Content-Type': 'multipart/related; boundary="' + boundary + '"'
+                        },
+                        'body': multipartRequestBody
+                    });
+                }
+            };
+
+            const loadFromGoogleDrive = async () => {
+                try {
+                    const response = await window.gapi.client.drive.files.list({
+                        q: "name='emotion-detector-data.json'",
+                        spaces: 'appDataFolder',
+                        fields: 'files(id, name)'
+                    });
+
+                    const files = response.result.files;
+                    if (files && files.length > 0) {
+                        const file = await window.gapi.client.drive.files.get({
+                            fileId: files[0].id,
+                            alt: 'media'
+                        });
+
+                        const data = JSON.parse(file.body);
+                        setHistory(data.history || []);
+                        setLearningDB(data.learningDB || []);
+                        setCustomAnswersDB(data.customAnswersDB || {});
+                    }
+                } catch (error) {
+                    console.error('Erreur lors du chargement depuis Drive:', error);
+                }
+            };
+
+            const handleAnswer = (answer) => {
+                const question = questions[currentQuestion];
                 
-                <div className="flex justify-center space-x-4 mt-4">
-                  <button
-                    onClick={() => setPhase('questioning')}
-                    className={`px-4 py-2 rounded-lg flex items-center ${phase === 'questioning' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-                  >
-                    <Brain size={16} className="mr-2" />
-                    Analyse
-                  </button>
-                  <button
-                    onClick={() => setPhase('history')}
-                    className={`px-4 py-2 rounded-lg flex items-center ${phase === 'history' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-                  >
-                    <History size={16} className="mr-2" />
-                    Historique ({history.length})
-                  </button>
-                </div>
-              </div>
-
-              {phase === 'questioning' && (
-                <div className="space-y-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <span className="text-sm text-gray-500">
-                      Question {currentQuestion + 1} sur {questions.length}
-                    </span>
-                    <div className="w-32 bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${((currentQuestion + 1) / questions.length) * 100}%` }}
-                      ></div>
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50 p-6 rounded-lg">
-                    <h2 className="text-xl font-semibold mb-4 text-gray-800">
-                      {currentQ.text}
-                    </h2>
+                if (question.type === 'single') {
+                    const newAnswers = { ...answers, [question.id]: answer };
+                    setAnswers(newAnswers);
                     
-                    <div className="space-y-3">
-                      {currentQ.options.map((option, index) => (
-                        <button
-                          key={index}
-                          onClick={() => handleAnswer(index)}
-                          className="w-full p-3 text-left bg-white border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors"
-                        >
-                          {option}
-                        </button>
-                      ))}
-                      
-                      <button
-                        onClick={() => setShowCustomInput(true)}
-                        className="w-full p-3 text-left bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100 transition-colors text-yellow-800"
-                      >
-                        ✏️ Autre réponse...
-                      </button>
-                    </div>
+                    if (currentQuestion < questions.length - 1) {
+                        setCurrentQuestion(currentQuestion + 1);
+                    } else {
+                        analyzeState(newAnswers);
+                    }
+                } else if (question.type === 'multiple') {
+                    const newSelections = multipleSelections.includes(answer)
+                        ? multipleSelections.filter(a => a !== answer)
+                        : [...multipleSelections, answer];
+                    setMultipleSelections(newSelections);
+                }
+            };
 
-                    {showCustomInput && (
-                      <div className="mt-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                        <input
-                          type="text"
-                          value={customAnswer}
-                          onChange={(e) => setCustomAnswer(e.target.value)}
-                          placeholder="Décrivez votre état avec vos mots..."
-                          className="w-full p-2 border border-gray-300 rounded mb-3"
-                          onKeyPress={(e) => e.key === 'Enter' && handleCustomSubmit()}
-                        />
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={handleCustomSubmit}
-                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                          >
-                            Valider
-                          </button>
-                          <button
-                            onClick={() => setShowCustomInput(false)}
-                            className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
-                          >
-                            Annuler
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
+            const handleMultipleNext = () => {
+                const question = questions[currentQuestion];
+                const newAnswers = { ...answers, [question.id]: multipleSelections };
+                setAnswers(newAnswers);
+                setMultipleSelections([]);
+                
+                if (currentQuestion < questions.length - 1) {
+                    setCurrentQuestion(currentQuestion + 1);
+                } else {
+                    analyzeState(newAnswers);
+                }
+            };
 
-              {phase === 'result' && result && (
-                <div className="space-y-6">
-                  <div className="text-center">
-                    <CheckCircle size={48} className="mx-auto mb-4 text-green-600" />
-                    <h2 className="text-2xl font-bold text-gray-800 mb-2">Analyse terminée</h2>
-                    {result.isLearned && (
-                      <div className="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
-                        <Brain size={14} className="mr-1" />
-                        Résultat appris
-                      </div>
-                    )}
-                  </div>
+            const analyzeState = (allAnswers) => {
+                // Chercher d'abord dans les apprentissages
+                const learnedState = findLearnedState(allAnswers);
+                if (learnedState) {
+                    setDetectedState({
+                        ...learnedState,
+                        isLearned: true
+                    });
+                } else {
+                    // Sinon utiliser l'algorithme de base
+                    let bestMatch = null;
+                    let highestConfidence = 0;
 
-                  <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
-                    <h3 className="text-xl font-semibold text-blue-800 mb-2">
-                      {result.name}
-                    </h3>
-                    <p className="text-gray-700 mb-4">{result.description}</p>
-                    <div className="flex items-center mb-4">
-                      <span className="text-sm text-gray-600 mr-2">Confiance :</span>
-                      <div className="flex-1 bg-gray-200 rounded-full h-2 mr-2">
-                        <div 
-                          className="bg-green-500 h-2 rounded-full"
-                          style={{ width: `${result.confidence}%` }}
-                        ></div>
-                      </div>
-                      <span className="text-sm font-semibold">{result.confidence}%</span>
-                    </div>
+                    for (const state of possibleStates) {
+                        if (state.conditions(allAnswers)) {
+                            if (state.confidence > highestConfidence) {
+                                highestConfidence = state.confidence;
+                                bestMatch = state;
+                            }
+                        }
+                    }
+
+                    if (!bestMatch) {
+                        bestMatch = possibleStates.find(s => s.id === 'neutral');
+                    }
+
+                    setDetectedState(bestMatch);
+                }
+
+                setShowResult(true);
+            };
+
+            const findLearnedState = (currentAnswers) => {
+                for (const learned of learningDB) {
+                    let similarCount = 0;
+                    const requiredSimilarity = 6;
+
+                    for (const key in learned.pattern) {
+                        if (Array.isArray(learned.pattern[key])) {
+                            if (JSON.stringify(learned.pattern[key].sort()) === 
+                                JSON.stringify(currentAnswers[key]?.sort())) {
+                                similarCount++;
+                            }
+                        } else {
+                            if (learned.pattern[key] === currentAnswers[key]) {
+                                similarCount++;
+                            }
+                        }
+                    }
+
+                    if (similarCount >= requiredSimilarity) {
+                        return possibleStates.find(s => s.id === learned.correctState);
+                    }
+                }
+                return null;
+            };
+
+            const handleValidation = (isCorrect) => {
+                const entry = {
+                    date: new Date().toISOString(),
+                    state: detectedState.id,
+                    confidence: detectedState.confidence,
+                    answers: answers,
+                    isCorrect: isCorrect,
+                    isLearned: detectedState.isLearned || false
+                };
+
+                setHistory([...history, entry]);
+
+                if (!isCorrect) {
+                    // Demander le vrai état
+                    const stateName = prompt("Quel était votre véritable état ?");
+                    if (stateName) {
+                        const newLearning = {
+                            pattern: answers,
+                            correctState: detectedState.id, // À améliorer avec une sélection
+                            addedDate: new Date().toISOString()
+                        };
+                        setLearningDB([...learningDB, newLearning]);
+                    }
+                }
+
+                resetQuiz();
+            };
+
+            const resetQuiz = () => {
+                setCurrentQuestion(0);
+                setAnswers({});
+                setMultipleSelections([]);
+                setShowResult(false);
+                setDetectedState(null);
+            };
+
+            const addCustomAnswer = () => {
+                if (customAnswerText.trim()) {
+                    const question = questions[currentQuestion];
+                    const questionAnswers = customAnswersDB[question.id] || {};
                     
-                    <div>
-                      <h4 className="font-semibold text-gray-800 mb-2">Suggestions :</h4>
-                      <ul className="text-sm text-gray-600 space-y-1">
-                        {result.suggestions.map((suggestion, index) => (
-                          <li key={index}>• {suggestion}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
+                    if (!questionAnswers[customAnswerText]) {
+                        questionAnswers[customAnswerText] = { count: 0, promoted: false };
+                    }
+                    
+                    questionAnswers[customAnswerText].count++;
+                    
+                    if (questionAnswers[customAnswerText].count >= 3) {
+                        questionAnswers[customAnswerText].promoted = true;
+                    }
 
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="text-gray-700 mb-4">Cette analyse vous semble-t-elle correcte ?</p>
-                    <div className="flex space-x-3">
-                      <button
-                        onClick={() => handleResultFeedback(true)}
-                        className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-                      >
-                        ✓ Oui, c'est juste
-                      </button>
-                      <button
-                        onClick={() => handleResultFeedback(false)}
-                        className="flex-1 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-                      >
-                        ✗ Non, pas vraiment
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
+                    setCustomAnswersDB({
+                        ...customAnswersDB,
+                        [question.id]: questionAnswers
+                    });
 
-              {phase === 'learning' && (
-                <div className="space-y-6">
-                  <div className="text-center">
-                    <AlertCircle size={48} className="mx-auto mb-4 text-orange-600" />
-                    <h2 className="text-2xl font-bold text-gray-800 mb-2">Apprentissage</h2>
-                    <p className="text-gray-600">Aidez-moi à mieux vous comprendre</p>
-                  </div>
+                    handleAnswer(customAnswerText);
+                    setCustomAnswerText('');
+                    setShowCustomAnswer(false);
+                }
+            };
 
-                  <div className="bg-orange-50 p-6 rounded-lg border border-orange-200">
-                    <p className="text-gray-700 mb-4">
-                      Pouvez-vous me dire quel était votre véritable état ?
-                    </p>
-                    <input
-                      type="text"
-                      placeholder="Ex: Je me sentais plutôt anxieux mais optimiste..."
-                      className="w-full p-3 border border-gray-300 rounded-lg mb-4"
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter' && e.target.value.trim()) {
-                          handleLearning(e.target.value.trim());
-                        }
-                      }}
-                    />
-                    <button
-                      onClick={(e) => {
-                        const input = e.target.previousElementSibling;
-                        if (input.value.trim()) {
-                          handleLearning(input.value.trim());
-                        }
-                      }}
-                      className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                    >
-                      Valider et recommencer
-                    </button>
-                  </div>
-                </div>
-              )}
+            const getQuestionOptions = (question) => {
+                const customOptions = customAnswersDB[question.id] || {};
+                const promotedOptions = Object.entries(customOptions)
+                    .filter(([_, data]) => data.promoted)
+                    .map(([text, _]) => ({ text, isPromoted: true }));
+                
+                const defaultOptions = question.options.map(opt => ({ text: opt, isPromoted: false }));
+                
+                return [...promotedOptions, ...defaultOptions];
+            };
 
-              {phase === 'history' && (
-                <div className="space-y-6">
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-2xl font-bold text-gray-800">Historique & Tendances</h2>
-                    <button
-                      onClick={() => setShowTrends(!showTrends)}
-                      className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center"
-                    >
-                      <TrendingUp size={16} className="mr-2" />
-                      {showTrends ? 'Masquer' : 'Voir'} Tendances
-                    </button>
-                  </div>
+            const calculateStats = () => {
+                const total = history.length;
+                const thisWeek = history.filter(h => {
+                    const date = new Date(h.date);
+                    const weekAgo = new Date();
+                    weekAgo.setDate(weekAgo.getDate() - 7);
+                    return date > weekAgo;
+                }).length;
+                
+                const thisMonth = history.filter(h => {
+                    const date = new Date(h.date);
+                    const monthAgo = new Date();
+                    monthAgo.setMonth(monthAgo.getMonth() - 1);
+                    return date > monthAgo;
+                }).length;
 
-                  {showTrends && trends && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                      <div className="bg-blue-50 p-4 rounded-lg text-center">
-                        <div className="text-2xl font-bold text-blue-600">{trends.totalAnalyses}</div>
-                        <div className="text-sm text-gray-600">Analyses totales</div>
-                      </div>
-                      <div className="bg-green-50 p-4 rounded-lg text-center">
-                        <div className="text-2xl font-bold text-green-600">{trends.last7Days}</div>
-                        <div className="text-sm text-gray-600">Cette semaine</div>
-                      </div>
-                      <div className="bg-purple-50 p-4 rounded-lg text-center">
-                        <div className="text-2xl font-bold text-purple-600">{trends.learningProgress}</div>
-                        <div className="text-sm text-gray-600">Apprentissages</div>
-                      </div>
-                      <div className="bg-orange-50 p-4 rounded-lg text-center">
-                        <div className="text-2xl font-bold text-orange-600">{trends.accuracy}%</div>
-                        <div className="text-sm text-gray-600">Précision</div>
-                      </div>
-                    </div>
-                  )}
+                const correct = history.filter(h => h.isCorrect).length;
+                const precision = total > 0 ? Math.round((correct / total) * 100) : 0;
 
-                  {showTrends && trends && (
-                    <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 rounded-lg border border-indigo-200 mb-6">
-                      <h3 className="text-lg font-semibold text-indigo-800 mb-2">État le plus fréquent</h3>
-                      <p className="text-indigo-700">
-                        <span className="font-bold">{trends.mostFrequentState}</span>
-                        {trends.mostFrequentCount > 0 && (
-                          <span> ({trends.mostFrequentCount} fois ce mois)</span>
-                        )}
-                      </p>
-                    </div>
-                  )}
+                const stateFrequency = {};
+                history.forEach(h => {
+                    stateFrequency[h.state] = (stateFrequency[h.state] || 0) + 1;
+                });
 
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {history.length === 0 ? (
-                      <div className="text-center py-8 text-gray-500">
-                        <Calendar size={48} className="mx-auto mb-4" />
-                        <p>Aucune analyse dans l'historique</p>
-                        <p className="text-sm">Commencez une analyse pour voir vos tendances</p>
-                      </div>
-                    ) : (
-                      history.map((entry) => (
-                        <div key={entry.id} className="bg-white border border-gray-200 rounded-lg p-4">
-                          <div className="flex justify-between items-start mb-2">
-                            <div>
-                              <h4 className="font-semibold text-gray-800">
-                                {entry.correctedState || entry.state}
-                                {entry.correctedState && (
-                                  <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                                    Corrigé
-                                  </span>
-                                )}
-                                {entry.isLearned && (
-                                  <span className="ml-2 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
-                                    Appris
-                                  </span>
-                                )}
-                              </h4>
-                              <p className="text-sm text-gray-600">{formatDate(entry.date)}</p>
+                const mostFrequent = Object.entries(stateFrequency)
+                    .sort(([,a], [,b]) => b - a)[0];
+
+                return {
+                    total,
+                    thisWeek,
+                    thisMonth,
+                    learnings: learningDB.length,
+                    precision,
+                    mostFrequent: mostFrequent ? {
+                        state: possibleStates.find(s => s.id === mostFrequent[0])?.name,
+                        count: mostFrequent[1]
+                    } : null
+                };
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4">
+                    <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl">
+                        {/* Header avec tabs */}
+                        <div className="border-b border-gray-200">
+                            <div className="flex justify-between items-center p-6">
+                                <h1 className="text-2xl font-bold text-gray-800">
+                                    🧠 Détecteur d'État Émotionnel
+                                </h1>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setCurrentTab('analyze')}
+                                        className={`px-4 py-2 rounded-lg transition-colors ${
+                                            currentTab === 'analyze' 
+                                                ? 'bg-blue-500 text-white' 
+                                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                        }`}
+                                    >
+                                        Analyse
+                                    </button>
+                                    <button
+                                        onClick={() => setCurrentTab('history')}
+                                        className={`px-4 py-2 rounded-lg transition-colors ${
+                                            currentTab === 'history' 
+                                                ? 'bg-blue-500 text-white' 
+                                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                        }`}
+                                    >
+                                        Historique ({history.length})
+                                    </button>
+                                    <button
+                                        onClick={driveConnected ? null : connectGoogleDrive}
+                                        className={`px-4 py-2 rounded-lg transition-colors ${
+                                            driveConnected 
+                                                ? 'bg-green-500 text-white' 
+                                                : 'bg-yellow-500 text-white hover:bg-yellow-600'
+                                        }`}
+                                    >
+                                        {driveConnected ? 'Drive ✓' : 'Connecter Drive'}
+                                    </button>
+                                </div>
                             </div>
-                            <div className="text-right">
-                              <div className="flex items-center">
-                                <span className={`text-xs px-2 py-1 rounded ${
-                                  entry.isCorrect ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                }`}>
-                                  {entry.isCorrect ? '✓ Correct' : '✗ Incorrect'}
-                                </span>
-                              </div>
-                              <p className="text-xs text-gray-500 mt-1">
-                                Confiance: {entry.confidence}%
-                              </p>
-                            </div>
-                          </div>
+                            {driveConnected && (
+                                <div className="px-6 pb-2 text-sm text-green-600">
+                                    🔄 Sauvegarde automatique activée
+                                    {isSaving && ' (enregistrement...)'}
+                                </div>
+                            )}
                         </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
 
-              {(phase === 'result' || phase === 'history') && (
-                <div className="mt-6 text-center">
-                  <button
-                    onClick={restart}
-                    className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-                  >
-                    <RotateCcw size={16} className="mr-2" />
-                    Nouvelle analyse
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-        };
+                        {/* Contenu principal */}
+                        <div className="p-6">
+                            {currentTab === 'analyze' && !showResult && (
+                                <div>
+                                    {/* Barre de progression */}
+                                    <div className="mb-6">
+                                        <div className="flex justify-between text-sm text-gray-600 mb-2">
+                                            <span>Question {currentQuestion + 1} sur {questions.length}</span>
+                                            <span>{Math.round(((currentQuestion + 1) / questions.length) * 100)}%</span>
+                                        </div>
+                                        <div className="w-full bg-gray-200 rounded-full h-2">
+                                            <div 
+                                                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                                                style={{ width: `${((currentQuestion + 1) / questions.length) * 100}%` }}
+                                            />
+                                        </div>
+                                    </div>
 
-        ReactDOM.render(<EmotionDetector />, document.getElementById('root'));
+                                    {/* Question */}
+                                    <div className="mb-6">
+                                        <h2 className="text-xl font-semibold text-gray-800 mb-4">
+                                            {questions[currentQuestion].question}
+                                        </h2>
+
+                                        {/* Options */}
+                                        <div className="space-y-2">
+                                            {getQuestionOptions(questions[currentQuestion]).map((option, index) => (
+                                                <div key={index} className="relative">
+                                                    {questions[currentQuestion].type === 'single' ? (
+                                                        <button
+                                                            onClick={() => handleAnswer(option.text)}
+                                                            className="w-full text-left p-4 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all duration-200"
+                                                        >
+                                                            {option.text}
+                                                            {option.isPromoted && (
+                                                                <span className="ml-2 px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded">
+                                                                    ★ Promu
+                                                                </span>
+                                                            )}
+                                                        </button>
+                                                    ) : (
+                                                        <label className="flex items-center p-4 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all duration-200 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="custom-checkbox mr-3"
+                                                                checked={multipleSelections.includes(option.text)}
+                                                                onChange={() => handleAnswer(option.text)}
+                                                            />
+                                                            <span className="flex-1">
+                                                                {option.text}
+                                                                {option.isPromoted && (
+                                                                    <span className="ml-2 px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded">
+                                                                        ★ Promu
+                                                                    </span>
+                                                                )}
+                                                            </span>
+                                                        </label>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Bouton réponse personnalisée */}
+                                        <button
+                                            onClick={() => setShowCustomAnswer(!showCustomAnswer)}
+                                            className="mt-4 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                        >
+                                            ✏️ Autre réponse...
+                                        </button>
+
+                                        {showCustomAnswer && (
+                                            <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                                                <h3 className="font-medium text-gray-700 mb-2">
+                                                    Réponse personnalisée
+                                                </h3>
+                                                
+                                                {/* Réponses précédentes */}
+                                                {Object.entries(customAnswersDB[questions[currentQuestion].id] || {}).length > 0 && (
+                                                    <div className="mb-3">
+                                                        <p className="text-sm text-gray-600 mb-1">
+                                                            Vos réponses précédentes :
+                                                        </p>
+                                                        <div className="space-y-1">
+                                                            {Object.entries(customAnswersDB[questions[currentQuestion].id] || {})
+                                                                .sort(([,a], [,b]) => b.count - a.count)
+                                                                .map(([text, data]) => (
+                                                                    <button
+                                                                        key={text}
+                                                                        onClick={() => {
+                                                                            handleAnswer(text);
+                                                                            setShowCustomAnswer(false);
+                                                                        }}
+                                                                        className="text-left w-full p-2 text-sm bg-white rounded border hover:bg-blue-50"
+                                                                    >
+                                                                        {text} ({data.count} fois)
+                                                                    </button>
+                                                                ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={customAnswerText}
+                                                        onChange={(e) => setCustomAnswerText(e.target.value)}
+                                                        onKeyPress={(e) => e.key === 'Enter' && addCustomAnswer()}
+                                                        placeholder="Votre réponse..."
+                                                        className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    />
+                                                    <button
+                                                        onClick={addCustomAnswer}
+                                                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                                                    >
+                                                        Ajouter
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Bouton suivant pour les questions multiples */}
+                                        {questions[currentQuestion].type === 'multiple' && (
+                                            <div className="mt-6 flex justify-between items-center">
+                                                <span className="text-sm text-gray-600">
+                                                    {multipleSelections.length} sélection(s)
+                                                </span>
+                                                <button
+                                                    onClick={handleMultipleNext}
+                                                    disabled={multipleSelections.length === 0}
+                                                    className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                                                        multipleSelections.length > 0
+                                                            ? 'bg-blue-500 text-white hover:bg-blue-600'
+                                                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                                    }`}
+                                                >
+                                                    Question suivante →
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {currentTab === 'analyze' && showResult && (
+                                <div className="text-center">
+                                    <div className="mb-6">
+                                        <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                            <svg className="w-10 h-10 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        </div>
+                                        <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                                            {detectedState.name}
+                                        </h2>
+                                        {detectedState.isLearned && (
+                                            <span className="inline-block px-3 py-1 bg-purple-100 text-purple-800 text-sm rounded-full mb-2">
+                                                Résultat appris
+                                            </span>
+                                        )}
+                                        <p className="text-gray-600 mb-4">
+                                            {detectedState.description}
+                                        </p>
+                                        
+                                        {/* Barre de confiance */}
+                                        <div className="mb-6">
+                                            <div className="flex justify-between text-sm text-gray-600 mb-1">
+                                                <span>Niveau de confiance</span>
+                                                <span>{detectedState.confidence}%</span>
+                                            </div>
+                                            <div className="w-full bg-gray-200 rounded-full h-2">
+                                                <div 
+                                                    className="bg-green-500 h-2 rounded-full transition-all duration-500"
+                                                    style={{ width: `${detectedState.confidence}%` }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Suggestions */}
+                                        <div className="bg-blue-50 rounded-lg p-4 mb-6">
+                                            <h3 className="font-semibold text-blue-800 mb-2">
+                                                Suggestions personnalisées :
+                                            </h3>
+                                            <ul className="text-left space-y-1">
+                                                {detectedState.suggestions.map((suggestion, index) => (
+                                                    <li key={index} className="text-blue-700">
+                                                        • {suggestion}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+
+                                        {/* Validation */}
+                                        <div className="space-y-2">
+                                            <p className="text-gray-600">Cette analyse vous semble-t-elle correcte ?</p>
+                                            <div className="flex gap-4 justify-center">
+                                                <button
+                                                    onClick={() => handleValidation(true)}
+                                                    className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                                                >
+                                                    ✓ Oui c'est juste
+                                                </button>
+                                                <button
+                                                    onClick={() => handleValidation(false)}
+                                                    className="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                                                >
+                                                    ✗ Non pas vraiment
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {currentTab === 'history' && (
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-800 mb-6">
+                                        Historique et statistiques
+                                    </h2>
+
+                                    {/* Statistiques */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                                        {(() => {
+                                            const stats = calculateStats();
+                                            return (
+                                                <>
+                                                    <div className="bg-blue-50 p-4 rounded-lg">
+                                                        <div className="text-2xl font-bold text-blue-600">
+                                                            {stats.total}
+                                                        </div>
+                                                        <div className="text-sm text-gray-600">
+                                                            Analyses totales
+                                                        </div>
+                                                    </div>
+                                                    <div className="bg-green-50 p-4 rounded-lg">
+                                                        <div className="text-2xl font-bold text-green-600">
+                                                            {stats.thisWeek}
+                                                        </div>
+                                                        <div className="text-sm text-gray-600">
+                                                            Cette semaine
+                                                        </div>
+                                                    </div>
+                                                    <div className="bg-purple-50 p-4 rounded-lg">
+                                                        <div className="text-2xl font-bold text-purple-600">
+                                                            {stats.learnings}
+                                                        </div>
+                                                        <div className="text-sm text-gray-600">
+                                                            Apprentissages
+                                                        </div>
+                                                    </div>
+                                                    <div className="bg-yellow-50 p-4 rounded-lg">
+                                                        <div className="text-2xl font-bold text-yellow-600">
+                                                            {stats.precision}%
+                                                        </div>
+                                                        <div className="text-sm text-gray-600">
+                                                            Précision
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            );
+                                        })()}
+                                    </div>
+
+                                    {/* État le plus fréquent */}
+                                    {(() => {
+                                        const stats = calculateStats();
+                                        return stats.mostFrequent && (
+                                            <div className="bg-indigo-50 p-4 rounded-lg mb-6">
+                                                <h3 className="font-semibold text-indigo-800 mb-1">
+                                                    État le plus fréquent ce mois :
+                                                </h3>
+                                                <p className="text-indigo-700">
+                                                    {stats.mostFrequent.state} ({stats.mostFrequent.count} fois)
+                                                </p>
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {/* Liste historique */}
+                                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                                        {history.length === 0 ? (
+                                            <p className="text-gray-500 text-center py-8">
+                                                Aucune analyse enregistrée pour le moment
+                                            </p>
+                                        ) : (
+                                            [...history].reverse().map((entry, index) => {
+                                                const state = possibleStates.find(s => s.id === entry.state);
+                                                return (
+                                                    <div key={index} className="border rounded-lg p-4 hover:bg-gray-50">
+                                                        <div className="flex justify-between items-start mb-2">
+                                                            <div>
+                                                                <h4 className="font-semibold text-gray-800">
+                                                                    {state?.name || 'État inconnu'}
+                                                                </h4>
+                                                                <p className="text-sm text-gray-600">
+                                                                    {new Date(entry.date).toLocaleString('fr-FR')}
+                                                                </p>
+                                                            </div>
+                                                            <div className="flex gap-2">
+                                                                {entry.isLearned && (
+                                                                    <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded">
+                                                                        Appris
+                                                                    </span>
+                                                                )}
+                                                                <span className={`px-2 py-1 text-xs rounded ${
+                                                                    entry.isCorrect 
+                                                                        ? 'bg-green-100 text-green-800' 
+                                                                        : 'bg-red-100 text-red-800'
+                                                                }`}>
+                                                                    {entry.isCorrect ? 'Correct' : 'Incorrect'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-sm text-gray-500">
+                                                            Confiance : {entry.confidence}%
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<EmotionDetectorApp />, document.getElementById('root'));
     </script>
 </body>
 </html>

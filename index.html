@@ -36,6 +36,19 @@
             color: white;
             font-weight: bold;
         }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        .notification-enter {
+            animation: slideIn 0.3s ease-out;
+        }
     </style>
 </head>
 <body>
@@ -356,7 +369,35 @@
             const [customAnswerText, setCustomAnswerText] = useState('');
             const [driveConnected, setDriveConnected] = useState(false);
             const [isSaving, setIsSaving] = useState(false);
+            const [notification, setNotification] = useState(null);
+            const [driveStatus, setDriveStatus] = useState('disconnected'); // disconnected, connecting, connected, error
+            const [lastSyncTime, setLastSyncTime] = useState(null);
             const saveTimeout = useRef(null);
+
+            // Afficher une notification
+            const showNotification = (message, type = 'info') => {
+                setNotification({ message, type });
+                // Plus longue durée pour les erreurs
+                const duration = type === 'error' ? 5000 : 3000;
+                setTimeout(() => setNotification(null), duration);
+            // Forcer la synchronisation manuelle
+            const forceSyncWithDrive = async () => {
+                if (!driveConnected) return;
+                
+                setIsSaving(true);
+                showNotification('🔄 Synchronisation en cours...', 'info');
+                
+                try {
+                    await saveData();
+                    await loadFromGoogleDrive();
+                    setLastSyncTime(new Date());
+                    showNotification('✅ Synchronisation réussie !', 'success');
+                } catch (error) {
+                    showNotification('❌ Erreur lors de la synchronisation', 'error');
+                }
+                
+                setIsSaving(false);
+            };
 
             // Initialisation
             useEffect(() => {
@@ -405,6 +446,7 @@
                     setIsSaving(true);
                     try {
                         await saveToGoogleDrive(data);
+                        setLastSyncTime(new Date());
                     } catch (error) {
                         console.error('Erreur lors de la sauvegarde sur Drive:', error);
                     }
@@ -413,6 +455,7 @@
             };
 
             const initializeGoogleDrive = () => {
+                setDriveStatus('connecting');
                 window.gapi.load('client:auth2', () => {
                     window.gapi.client.init({
                         clientId: CLIENT_ID,
@@ -420,18 +463,58 @@
                         scope: SCOPES
                     }).then(() => {
                         const authInstance = window.gapi.auth2.getAuthInstance();
-                        setDriveConnected(authInstance.isSignedIn.get());
-                        authInstance.isSignedIn.listen(setDriveConnected);
+                        const isSignedIn = authInstance.isSignedIn.get();
                         
-                        if (authInstance.isSignedIn.get()) {
+                        setDriveConnected(isSignedIn);
+                        setDriveStatus(isSignedIn ? 'connected' : 'disconnected');
+                        
+                        authInstance.isSignedIn.listen((signedIn) => {
+                            setDriveConnected(signedIn);
+                            setDriveStatus(signedIn ? 'connected' : 'disconnected');
+                            
+                            if (signedIn) {
+                                showNotification('✅ Connexion Google Drive réussie !', 'success');
+                                testDriveConnection();
+                            } else {
+                                showNotification('⚠️ Déconnecté de Google Drive', 'warning');
+                            }
+                        });
+                        
+                        if (isSignedIn) {
                             loadFromGoogleDrive();
                         }
+                    }).catch(error => {
+                        console.error('Erreur initialisation Google API:', error);
+                        setDriveStatus('error');
+                        showNotification('❌ Erreur lors de l\'initialisation de Google Drive', 'error');
                     });
                 });
             };
 
             const connectGoogleDrive = () => {
-                window.gapi.auth2.getAuthInstance().signIn();
+                setDriveStatus('connecting');
+                window.gapi.auth2.getAuthInstance().signIn()
+                    .catch(error => {
+                        console.error('Erreur connexion:', error);
+                        setDriveStatus('disconnected');
+                        showNotification('❌ Erreur lors de la connexion', 'error');
+                    });
+            };
+
+            // Test de connexion pour vérifier que tout fonctionne
+            const testDriveConnection = async () => {
+                try {
+                    await window.gapi.client.drive.files.list({
+                        q: "name='emotion-detector-test'",
+                        spaces: 'appDataFolder',
+                        fields: 'files(id, name)'
+                    });
+                    showNotification('✅ Google Drive est opérationnel !', 'success');
+                } catch (error) {
+                    console.error('Test connexion échoué:', error);
+                    setDriveStatus('error');
+                    showNotification('⚠️ Connexion établie mais accès Drive limité', 'warning');
+                }
             };
 
             const saveToGoogleDrive = async (data) => {
@@ -454,36 +537,43 @@
                     JSON.stringify(data) +
                     close_delim;
 
-                // Vérifier si le fichier existe déjà
-                const response = await window.gapi.client.drive.files.list({
-                    q: "name='emotion-detector-data.json'",
-                    spaces: 'appDataFolder',
-                    fields: 'files(id, name)'
-                });
+                try {
+                    // Vérifier si le fichier existe déjà
+                    const response = await window.gapi.client.drive.files.list({
+                        q: "name='emotion-detector-data.json'",
+                        spaces: 'appDataFolder',
+                        fields: 'files(id, name)'
+                    });
 
-                const files = response.result.files;
-                if (files && files.length > 0) {
-                    // Mettre à jour le fichier existant
-                    await window.gapi.client.request({
-                        'path': '/upload/drive/v3/files/' + files[0].id,
-                        'method': 'PATCH',
-                        'params': {'uploadType': 'multipart'},
-                        'headers': {
-                            'Content-Type': 'multipart/related; boundary="' + boundary + '"'
-                        },
-                        'body': multipartRequestBody
-                    });
-                } else {
-                    // Créer un nouveau fichier
-                    await window.gapi.client.request({
-                        'path': '/upload/drive/v3/files',
-                        'method': 'POST',
-                        'params': {'uploadType': 'multipart'},
-                        'headers': {
-                            'Content-Type': 'multipart/related; boundary="' + boundary + '"'
-                        },
-                        'body': multipartRequestBody
-                    });
+                    const files = response.result.files;
+                    if (files && files.length > 0) {
+                        // Mettre à jour le fichier existant
+                        await window.gapi.client.request({
+                            'path': '/upload/drive/v3/files/' + files[0].id,
+                            'method': 'PATCH',
+                            'params': {'uploadType': 'multipart'},
+                            'headers': {
+                                'Content-Type': 'multipart/related; boundary="' + boundary + '"'
+                            },
+                            'body': multipartRequestBody
+                        });
+                    } else {
+                        // Créer un nouveau fichier
+                        await window.gapi.client.request({
+                            'path': '/upload/drive/v3/files',
+                            'method': 'POST',
+                            'params': {'uploadType': 'multipart'},
+                            'headers': {
+                                'Content-Type': 'multipart/related; boundary="' + boundary + '"'
+                            },
+                            'body': multipartRequestBody
+                        });
+                    }
+                    // Notification discrète de succès (pas de notification car c'est automatique)
+                } catch (error) {
+                    console.error('Erreur sauvegarde Drive:', error);
+                    showNotification('⚠️ Erreur lors de la sauvegarde sur Drive', 'error');
+                    throw error;
                 }
             };
 
@@ -506,9 +596,15 @@
                         setHistory(data.history || []);
                         setLearningDB(data.learningDB || []);
                         setCustomAnswersDB(data.customAnswersDB || {});
+                        setLastSyncTime(new Date());
+                        
+                        showNotification('✅ Données synchronisées depuis Google Drive', 'success');
+                    } else {
+                        showNotification('ℹ️ Aucune donnée sauvegardée trouvée', 'info');
                     }
                 } catch (error) {
                     console.error('Erreur lors du chargement depuis Drive:', error);
+                    showNotification('⚠️ Impossible de charger les données depuis Drive', 'error');
                 }
             };
 
@@ -717,6 +813,35 @@
 
             return (
                 <div className="min-h-screen flex items-center justify-center p-4">
+                    {/* Notification */}
+                    {notification && (
+                        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 notification-enter ${
+                            notification.type === 'success' ? 'bg-green-500 text-white' :
+                            notification.type === 'error' ? 'bg-red-500 text-white' :
+                            notification.type === 'warning' ? 'bg-yellow-500 text-white' :
+                            'bg-blue-500 text-white'
+                        }`}>
+                            <div className="flex items-center gap-2">
+                                {notification.type === 'success' && (
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                )}
+                                {notification.type === 'error' && (
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                )}
+                                {notification.type === 'warning' && (
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                    </svg>
+                                )}
+                                <span>{notification.message}</span>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl">
                         {/* Header avec tabs */}
                         <div className="border-b border-gray-200">
@@ -746,21 +871,61 @@
                                         Historique ({history.length})
                                     </button>
                                     <button
-                                        onClick={driveConnected ? null : connectGoogleDrive}
-                                        className={`px-4 py-2 rounded-lg transition-colors ${
-                                            driveConnected 
-                                                ? 'bg-green-500 text-white' 
-                                                : 'bg-yellow-500 text-white hover:bg-yellow-600'
+                                        onClick={driveStatus === 'disconnected' ? connectGoogleDrive : null}
+                                        disabled={driveStatus === 'connecting'}
+                                        className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                                            driveStatus === 'connected' ? 'bg-green-500 text-white' :
+                                            driveStatus === 'connecting' ? 'bg-gray-400 text-white cursor-wait' :
+                                            driveStatus === 'error' ? 'bg-red-500 text-white hover:bg-red-600' :
+                                            'bg-yellow-500 text-white hover:bg-yellow-600'
                                         }`}
                                     >
-                                        {driveConnected ? 'Drive ✓' : 'Connecter Drive'}
+                                        {driveStatus === 'connected' ? (
+                                            <>
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                                Drive ✓
+                                            </>
+                                        ) : driveStatus === 'connecting' ? (
+                                            <>
+                                                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                </svg>
+                                                Connexion...
+                                            </>
+                                        ) : driveStatus === 'error' ? (
+                                            <>
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                                Erreur Drive
+                                            </>
+                                        ) : (
+                                            'Connecter Drive'
+                                        )}
                                     </button>
                                 </div>
                             </div>
                             {driveConnected && (
-                                <div className="px-6 pb-2 text-sm text-green-600">
-                                    🔄 Sauvegarde automatique activée
-                                    {isSaving && ' (enregistrement...)'}
+                                <div className="px-6 pb-2 flex items-center justify-between text-sm">
+                                    <div className="flex items-center gap-2 text-green-600">
+                                        <svg className="w-4 h-4 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+                                            <circle cx="12" cy="12" r="3"/>
+                                        </svg>
+                                        <span>
+                                            🔄 Sauvegarde automatique activée
+                                            {isSaving && ' (enregistrement...)'}
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={forceSyncWithDrive}
+                                        disabled={isSaving}
+                                        className="text-blue-600 hover:text-blue-800 font-medium disabled:text-gray-400"
+                                    >
+                                        Forcer la synchronisation
+                                    </button>
                                 </div>
                             )}
                         </div>
@@ -980,9 +1145,59 @@
 
                             {currentTab === 'history' && (
                                 <div>
-                                    <h2 className="text-xl font-bold text-gray-800 mb-6">
-                                        Historique et statistiques
-                                    </h2>
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h2 className="text-xl font-bold text-gray-800">
+                                            Historique et statistiques
+                                        </h2>
+                                        {driveConnected && (
+                                            <button
+                                                onClick={testDriveConnection}
+                                                className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                                            >
+                                                Tester la connexion Drive
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* Informations de connexion Drive */}
+                                    {driveStatus !== 'disconnected' && (
+                                        <div className={`p-4 rounded-lg mb-6 ${
+                                            driveStatus === 'connected' ? 'bg-green-50 border border-green-200' :
+                                            driveStatus === 'connecting' ? 'bg-blue-50 border border-blue-200' :
+                                            'bg-red-50 border border-red-200'
+                                        }`}>
+                                            <h3 className={`font-semibold mb-2 ${
+                                                driveStatus === 'connected' ? 'text-green-800' :
+                                                driveStatus === 'connecting' ? 'text-blue-800' :
+                                                'text-red-800'
+                                            }`}>
+                                                État de la connexion Google Drive
+                                            </h3>
+                                            <p className={`text-sm ${
+                                                driveStatus === 'connected' ? 'text-green-700' :
+                                                driveStatus === 'connecting' ? 'text-blue-700' :
+                                                'text-red-700'
+                                            }`}>
+                                                {driveStatus === 'connected' ? 
+                                                    '✅ Connecté - Vos données sont automatiquement synchronisées' :
+                                                driveStatus === 'connecting' ? 
+                                                    '⏳ Connexion en cours...' :
+                                                    '❌ Erreur de connexion - Vérifiez vos paramètres Google'}
+                                            </p>
+                                            {driveStatus === 'connected' && (
+                                                <>
+                                                    <p className="text-xs text-green-600 mt-1">
+                                                        Les données sont sauvegardées dans votre espace privé Google Drive
+                                                    </p>
+                                                    {lastSyncTime && (
+                                                        <p className="text-xs text-green-600 mt-1">
+                                                            Dernière synchronisation : {lastSyncTime.toLocaleTimeString('fr-FR')}
+                                                        </p>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {/* Statistiques */}
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

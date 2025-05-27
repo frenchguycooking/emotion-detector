@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Détecteur d'État Émotionnel</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        // Icônes Lucide simplifiées
+        const Brain = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+        );
+        
+        const CheckCircle = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+        );
+        
+        const AlertCircle = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+        );
+        
+        const RotateCcw = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M1 4v6h6M3.51 15a9 9 0 102.13-9.36L1 10" />
+            </svg>
+        );
+        
+        const History = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+        );
+        
+        const TrendingUp = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            </svg>
+        );
+        
+        const Calendar = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+        );
+
+        const EmotionDetector = () => {
+          const [currentQuestion, setCurrentQuestion] = useState(0);
+          const [answers, setAnswers] = useState([]);
+          const [phase, setPhase] = useState('questioning');
+          const [result, setResult] = useState(null);
+          const [customAnswer, setCustomAnswer] = useState('');
+          const [showCustomInput, setShowCustomInput] = useState(false);
+          const [learningData, setLearningData] = useState(null);
+          const [history, setHistory] = useState([]);
+          const [learningDB, setLearningDB] = useState([]);
+          const [showTrends, setShowTrends] = useState(false);
+
+          useEffect(() => {
+            const savedHistory = localStorage.getItem('emotion-history');
+            const savedLearning = localStorage.getItem('emotion-learning');
+            
+            if (savedHistory) {
+              setHistory(JSON.parse(savedHistory));
+            }
+            if (savedLearning) {
+              setLearningDB(JSON.parse(savedLearning));
+            }
+          }, []);
+
+          useEffect(() => {
+            if (history.length > 0) {
+              localStorage.setItem('emotion-history', JSON.stringify(history));
+            }
+          }, [history]);
+
+          useEffect(() => {
+            if (learningDB.length > 0) {
+              localStorage.setItem('emotion-learning', JSON.stringify(learningDB));
+            }
+          }, [learningDB]);
+
+          const questions = [
+            {
+              id: 0,
+              text: "Ressentez-vous des douleurs ou inconforts physiques ?",
+              options: ["Aucune douleur", "Douleur légère", "Douleur modérée", "Douleur forte", "Douleur très intense"],
+              category: "pain"
+            },
+            {
+              id: 1,
+              text: "Quelle sensation physique domine actuellement ?",
+              options: ["Fatigue", "Mal de tête", "Mal de ventre", "Tension musculaire", "Aucune sensation particulière"],
+              category: "sensation"
+            },
+            {
+              id: 2,
+              text: "Votre état de santé général aujourd'hui :",
+              options: ["Je me sens malade", "Un peu patraque", "Normal", "En forme", "Très en forme"],
+              category: "health"
+            },
+            {
+              id: 3,
+              text: "En ce moment, votre niveau d'énergie est :",
+              options: ["Épuisé(e)", "Très fatigué(e)", "Fatigué(e)", "Normal", "Énergique"],
+              category: "energy"
+            },
+            {
+              id: 4,
+              text: "Votre humeur générale penche vers :",
+              options: ["Très négative", "Négative", "Neutre", "Positive", "Très positive"],
+              category: "mood"
+            },
+            {
+              id: 5,
+              text: "Votre corps vous semble :",
+              options: ["Très tendu", "Tendu", "Normal", "Détendu", "Très détendu"],
+              category: "physical"
+            },
+            {
+              id: 6,
+              text: "Vos pensées sont :",
+              options: ["Très confuses", "Agitées", "Normales", "Claires", "Très claires"],
+              category: "mental"
+            },
+            {
+              id: 7,
+              text: "Face aux autres, vous vous sentez :",
+              options: ["Très fermé(e)", "Fermé(e)", "Neutre", "Ouvert(e)", "Très sociable"],
+              category: "social"
+            },
+            {
+              id: 8,
+              text: "Vous ressentez principalement :",
+              options: ["Souffrance physique", "Tristesse", "Anxiété", "Colère", "Joie"],
+              category: "emotion"
+            }
+          ];
+
+          const findSimilarPatterns = (currentAnswers) => {
+            return learningDB.filter(entry => {
+              const similarity = entry.answers.reduce((acc, answer, index) => {
+                return acc + (Math.abs(answer - currentAnswers[index]) <= 1 ? 1 : 0);
+              }, 0);
+              return similarity >= 6;
+            });
+          };
+
+          const analyzeState = () => {
+            const profile = {
+              pain: answers[0] || 2,
+              sensation: answers[1] || 4,
+              health: answers[2] || 2,
+              energy: answers[3] || 2,
+              mood: answers[4] || 2,
+              physical: answers[5] || 2,
+              mental: answers[6] || 2,
+              social: answers[7] || 2,
+              emotion: answers[8] || 2
+            };
+
+            const similarPatterns = findSimilarPatterns(answers);
+            if (similarPatterns.length > 0) {
+              const mostRecentPattern = similarPatterns[similarPatterns.length - 1];
+              return {
+                name: mostRecentPattern.correctState,
+                description: `État appris : ${mostRecentPattern.correctState}`,
+                confidence: Math.min(95, 70 + similarPatterns.length * 5),
+                suggestions: getAdaptedSuggestions(mostRecentPattern.correctState),
+                isLearned: true
+              };
+            }
+
+            let state = {};
+
+            if (profile.pain >= 3) {
+              if (profile.sensation === 0) {
+                state = {
+                  name: "Fatigue intense avec douleur",
+                  description: "Vous ressentez une fatigue importante accompagnée de douleurs physiques significatives.",
+                  confidence: 90,
+                  suggestions: ["Repos immédiat", "Consulter un médecin", "Hydratation", "Éviter les efforts"]
+                };
+              } else if (profile.sensation === 1) {
+                state = {
+                  name: "Céphalées importantes",
+                  description: "Vous souffrez de maux de tête intenses qui dominent votre état actuel.",
+                  confidence: 95,
+                  suggestions: ["Repos dans l'obscurité", "Hydratation", "Antalgique si nécessaire", "Éviter les écrans"]
+                };
+              } else if (profile.sensation === 2) {
+                state = {
+                  name: "Douleurs abdominales",
+                  description: "Des douleurs au ventre affectent significativement votre bien-être.",
+                  confidence: 90,
+                  suggestions: ["Repos digestif", "Boissons chaudes", "Position fœtale", "Surveiller l'évolution"]
+                };
+              } else {
+                state = {
+                  name: "Douleur physique dominante",
+                  description: "Vous traversez un épisode douloureux qui impacte votre état général.",
+                  confidence: 85,
+                  suggestions: ["Gestion de la douleur", "Repos", "Consulter si persistant", "Techniques de relaxation"]
+                };
+              }
+            } else if (profile.health <= 1 || (profile.energy <= 1 && profile.sensation === 0)) {
+              state = {
+                name: "État grippal/malade",
+                description: "Vous semblez en période de maladie avec fatigue et malaise général.",
+                confidence: 85,
+                suggestions: ["Repos au lit", "Hydratation abondante", "Surveiller la température", "Consulter si aggravation"]
+              };
+            } else if (profile.sensation === 0 && profile.energy <= 1) {
+              state = {
+                name: "Épuisement/Fatigue chronique",
+                description: "La fatigue domine complètement votre état, vous vous sentez vidé(e).",
+                confidence: 90,
+                suggestions: ["Sommeil prioritaire", "Alimentation légère", "Pas d'effort", "Vérifier les causes"]
+              };
+            } else if (profile.sensation === 3 && profile.physical <= 1) {
+              state = {
+                name: "Tension musculaire/Stress corporel",
+                description: "Votre corps accumule les tensions, créant un inconfort musculaire.",
+                confidence: 85,
+                suggestions: ["Étirements doux", "Massage", "Bain chaud", "Exercices de relaxation"]
+              };
+            } else if (profile.emotion === 0) {
+              state = {
+                name: "Souffrance physique prédominante",
+                description: "La douleur physique domine vos sensations et votre état émotionnel.",
+                confidence: 95,
+                suggestions: ["Prise en charge de la douleur", "Soutien médical", "Repos adapté", "Techniques d'apaisement"]
+              };
+            } else if (profile.energy <= 1 && profile.mood <= 1) {
+              state = {
+                name: "État dépressif avec fatigue",
+                description: "Vous traversez une période difficile mêlant fatigue et moral bas.",
+                confidence: 80,
+                suggestions: ["Soutien psychologique", "Activités très douces", "Lumière naturelle", "Contact social progressif"]
+              };
+            } else if (profile.mental <= 1 && profile.emotion === 2) {
+              state = {
+                name: "Anxiété/Confusion mentale",
+                description: "Vos pensées sont confuses, créant un état d'anxiété et d'agitation.",
+                confidence: 80,
+                suggestions: ["Exercices de respiration", "Méditation courte", "Réduire les stimuli", "Activité apaisante"]
+              };
+            } else if (profile.mood >= 3 && profile.energy >= 3 && profile.pain <= 1) {
+              state = {
+                name: "État positif et énergique",
+                description: "Vous êtes dans une bonne dynamique, sans douleur particulière.",
+                confidence: 90,
+                suggestions: ["Profiter de cette énergie", "Activités plaisantes", "Partage social", "Projets créatifs"]
+              };
+            } else {
+              const sensationLabels = ["fatigue", "maux de tête", "problèmes digestifs", "tensions musculaires", "aucune sensation"];
+              const dominantSensation = sensationLabels[profile.sensation] || "sensations variées";
+              
+              state = {
+                name: `État mixte avec ${dominantSensation}`,
+                description: `Votre état présente plusieurs facettes avec une dominante de ${dominantSensation}.`,
+                confidence: 65,
+                suggestions: ["Auto-observation", "Prendre soin de soi", "Adapter selon les sensations", "Soutien si nécessaire"]
+              };
+            }
+
+            return state;
+          };
+
+          const getAdaptedSuggestions = (stateName) => {
+            const suggestionMap = {
+              "Fatigue intense avec douleur": ["Repos immédiat", "Consulter un médecin", "Hydratation"],
+              "Céphalées importantes": ["Repos dans l'obscurité", "Hydratation", "Éviter les écrans"],
+              "Douleurs abdominales": ["Repos digestif", "Boissons chaudes", "Position fœtale"],
+              "État grippal/malade": ["Repos au lit", "Hydratation abondante", "Surveiller la température"],
+              "Épuisement/Fatigue chronique": ["Sommeil prioritaire", "Alimentation légère", "Pas d'effort"],
+            };
+            return suggestionMap[stateName] || ["Repos", "Auto-observation", "Soutien si nécessaire"];
+          };
+
+          const handleAnswer = (answerIndex, customText = null) => {
+            const newAnswers = [...answers];
+            if (customText) {
+              newAnswers[currentQuestion] = customText;
+            } else {
+              newAnswers[currentQuestion] = answerIndex;
+            }
+            setAnswers(newAnswers);
+            setShowCustomInput(false);
+            setCustomAnswer('');
+
+            if (currentQuestion < questions.length - 1) {
+              setCurrentQuestion(currentQuestion + 1);
+            } else {
+              const detectedState = analyzeState();
+              setResult(detectedState);
+              setPhase('result');
+            }
+          };
+
+          const handleCustomSubmit = () => {
+            if (customAnswer.trim()) {
+              handleAnswer(null, customAnswer.trim());
+            }
+          };
+
+          const handleResultFeedback = (isCorrect) => {
+            const newHistoryEntry = {
+              id: Date.now(),
+              date: new Date().toISOString(),
+              state: result.name,
+              confidence: result.confidence,
+              isCorrect: isCorrect,
+              answers: [...answers],
+              isLearned: result.isLearned || false
+            };
+
+            setHistory(prev => [newHistoryEntry, ...prev]);
+
+            if (!isCorrect) {
+              setLearningData({
+                answers: answers,
+                wrongResult: result,
+                timestamp: new Date(),
+                historyId: newHistoryEntry.id
+              });
+              setPhase('learning');
+            } else {
+              restart();
+            }
+          };
+
+          const handleLearning = (correctState) => {
+            const newLearningEntry = {
+              answers: learningData.answers,
+              correctState: correctState,
+              wrongResult: learningData.wrongResult.name,
+              timestamp: learningData.timestamp,
+              id: Date.now()
+            };
+
+            setLearningDB(prev => [...prev, newLearningEntry]);
+
+            setHistory(prev => prev.map(entry => 
+              entry.id === learningData.historyId 
+                ? { ...entry, correctedState: correctState }
+                : entry
+            ));
+
+            alert(`Merci ! J'ai appris que pour ce profil de réponses, l'état correct est "${correctState}".`);
+            restart();
+          };
+
+          const restart = () => {
+            setCurrentQuestion(0);
+            setAnswers([]);
+            setPhase('questioning');
+            setResult(null);
+            setLearningData(null);
+            setShowCustomInput(false);
+            setCustomAnswer('');
+          };
+
+          const analyzeTrends = () => {
+            if (history.length === 0) return null;
+
+            const last7Days = history.filter(entry => {
+              const entryDate = new Date(entry.date);
+              const weekAgo = new Date();
+              weekAgo.setDate(weekAgo.getDate() - 7);
+              return entryDate >= weekAgo;
+            });
+
+            const last30Days = history.filter(entry => {
+              const entryDate = new Date(entry.date);
+              const monthAgo = new Date();
+              monthAgo.setDate(monthAgo.getDate() - 30);
+              return entryDate >= monthAgo;
+            });
+
+            const stateFrequency = {};
+            last30Days.forEach(entry => {
+              const state = entry.correctedState || entry.state;
+              stateFrequency[state] = (stateFrequency[state] || 0) + 1;
+            });
+
+            const mostFrequent = Object.entries(stateFrequency)
+              .sort(([,a], [,b]) => b - a)[0];
+
+            return {
+              totalAnalyses: history.length,
+              last7Days: last7Days.length,
+              last30Days: last30Days.length,
+              mostFrequentState: mostFrequent ? mostFrequent[0] : "Aucun",
+              mostFrequentCount: mostFrequent ? mostFrequent[1] : 0,
+              learningProgress: learningDB.length,
+              accuracy: history.length > 0 ? Math.round((history.filter(h => h.isCorrect).length / history.length) * 100) : 0
+            };
+          };
+
+          const formatDate = (dateString) => {
+            const date = new Date(dateString);
+            return date.toLocaleString('fr-FR', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+          };
+
+          const currentQ = questions[currentQuestion];
+          const trends = analyzeTrends();
+
+          return (
+            <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg">
+              <div className="text-center mb-8">
+                <Brain size={48} className="mx-auto mb-4 text-blue-600" />
+                <h1 className="text-3xl font-bold text-gray-800 mb-2">Détecteur d'État Avancé</h1>
+                <p className="text-gray-600">Analyseur intelligent qui apprend de vos retours</p>
+                
+                <div className="flex justify-center space-x-4 mt-4">
+                  <button
+                    onClick={() => setPhase('questioning')}
+                    className={`px-4 py-2 rounded-lg flex items-center ${phase === 'questioning' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                  >
+                    <Brain size={16} className="mr-2" />
+                    Analyse
+                  </button>
+                  <button
+                    onClick={() => setPhase('history')}
+                    className={`px-4 py-2 rounded-lg flex items-center ${phase === 'history' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                  >
+                    <History size={16} className="mr-2" />
+                    Historique ({history.length})
+                  </button>
+                </div>
+              </div>
+
+              {phase === 'questioning' && (
+                <div className="space-y-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-sm text-gray-500">
+                      Question {currentQuestion + 1} sur {questions.length}
+                    </span>
+                    <div className="w-32 bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${((currentQuestion + 1) / questions.length) * 100}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-50 p-6 rounded-lg">
+                    <h2 className="text-xl font-semibold mb-4 text-gray-800">
+                      {currentQ.text}
+                    </h2>
+                    
+                    <div className="space-y-3">
+                      {currentQ.options.map((option, index) => (
+                        <button
+                          key={index}
+                          onClick={() => handleAnswer(index)}
+                          className="w-full p-3 text-left bg-white border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors"
+                        >
+                          {option}
+                        </button>
+                      ))}
+                      
+                      <button
+                        onClick={() => setShowCustomInput(true)}
+                        className="w-full p-3 text-left bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100 transition-colors text-yellow-800"
+                      >
+                        ✏️ Autre réponse...
+                      </button>
+                    </div>
+
+                    {showCustomInput && (
+                      <div className="mt-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                        <input
+                          type="text"
+                          value={customAnswer}
+                          onChange={(e) => setCustomAnswer(e.target.value)}
+                          placeholder="Décrivez votre état avec vos mots..."
+                          className="w-full p-2 border border-gray-300 rounded mb-3"
+                          onKeyPress={(e) => e.key === 'Enter' && handleCustomSubmit()}
+                        />
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={handleCustomSubmit}
+                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                          >
+                            Valider
+                          </button>
+                          <button
+                            onClick={() => setShowCustomInput(false)}
+                            className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                          >
+                            Annuler
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {phase === 'result' && result && (
+                <div className="space-y-6">
+                  <div className="text-center">
+                    <CheckCircle size={48} className="mx-auto mb-4 text-green-600" />
+                    <h2 className="text-2xl font-bold text-gray-800 mb-2">Analyse terminée</h2>
+                    {result.isLearned && (
+                      <div className="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
+                        <Brain size={14} className="mr-1" />
+                        Résultat appris
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
+                    <h3 className="text-xl font-semibold text-blue-800 mb-2">
+                      {result.name}
+                    </h3>
+                    <p className="text-gray-700 mb-4">{result.description}</p>
+                    <div className="flex items-center mb-4">
+                      <span className="text-sm text-gray-600 mr-2">Confiance :</span>
+                      <div className="flex-1 bg-gray-200 rounded-full h-2 mr-2">
+                        <div 
+                          className="bg-green-500 h-2 rounded-full"
+                          style={{ width: `${result.confidence}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-sm font-semibold">{result.confidence}%</span>
+                    </div>
+                    
+                    <div>
+                      <h4 className="font-semibold text-gray-800 mb-2">Suggestions :</h4>
+                      <ul className="text-sm text-gray-600 space-y-1">
+                        {result.suggestions.map((suggestion, index) => (
+                          <li key={index}>• {suggestion}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <p className="text-gray-700 mb-4">Cette analyse vous semble-t-elle correcte ?</p>
+                    <div className="flex space-x-3">
+                      <button
+                        onClick={() => handleResultFeedback(true)}
+                        className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                      >
+                        ✓ Oui, c'est juste
+                      </button>
+                      <button
+                        onClick={() => handleResultFeedback(false)}
+                        className="flex-1 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                      >
+                        ✗ Non, pas vraiment
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {phase === 'learning' && (
+                <div className="space-y-6">
+                  <div className="text-center">
+                    <AlertCircle size={48} className="mx-auto mb-4 text-orange-600" />
+                    <h2 className="text-2xl font-bold text-gray-800 mb-2">Apprentissage</h2>
+                    <p className="text-gray-600">Aidez-moi à mieux vous comprendre</p>
+                  </div>
+
+                  <div className="bg-orange-50 p-6 rounded-lg border border-orange-200">
+                    <p className="text-gray-700 mb-4">
+                      Pouvez-vous me dire quel était votre véritable état ?
+                    </p>
+                    <input
+                      type="text"
+                      placeholder="Ex: Je me sentais plutôt anxieux mais optimiste..."
+                      className="w-full p-3 border border-gray-300 rounded-lg mb-4"
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && e.target.value.trim()) {
+                          handleLearning(e.target.value.trim());
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={(e) => {
+                        const input = e.target.previousElementSibling;
+                        if (input.value.trim()) {
+                          handleLearning(input.value.trim());
+                        }
+                      }}
+                      className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      Valider et recommencer
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {phase === 'history' && (
+                <div className="space-y-6">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-2xl font-bold text-gray-800">Historique & Tendances</h2>
+                    <button
+                      onClick={() => setShowTrends(!showTrends)}
+                      className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center"
+                    >
+                      <TrendingUp size={16} className="mr-2" />
+                      {showTrends ? 'Masquer' : 'Voir'} Tendances
+                    </button>
+                  </div>
+
+                  {showTrends && trends && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                      <div className="bg-blue-50 p-4 rounded-lg text-center">
+                        <div className="text-2xl font-bold text-blue-600">{trends.totalAnalyses}</div>
+                        <div className="text-sm text-gray-600">Analyses totales</div>
+                      </div>
+                      <div className="bg-green-50 p-4 rounded-lg text-center">
+                        <div className="text-2xl font-bold text-green-600">{trends.last7Days}</div>
+                        <div className="text-sm text-gray-600">Cette semaine</div>
+                      </div>
+                      <div className="bg-purple-50 p-4 rounded-lg text-center">
+                        <div className="text-2xl font-bold text-purple-600">{trends.learningProgress}</div>
+                        <div className="text-sm text-gray-600">Apprentissages</div>
+                      </div>
+                      <div className="bg-orange-50 p-4 rounded-lg text-center">
+                        <div className="text-2xl font-bold text-orange-600">{trends.accuracy}%</div>
+                        <div className="text-sm text-gray-600">Précision</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {showTrends && trends && (
+                    <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 rounded-lg border border-indigo-200 mb-6">
+                      <h3 className="text-lg font-semibold text-indigo-800 mb-2">État le plus fréquent</h3>
+                      <p className="text-indigo-700">
+                        <span className="font-bold">{trends.mostFrequentState}</span>
+                        {trends.mostFrequentCount > 0 && (
+                          <span> ({trends.mostFrequentCount} fois ce mois)</span>
+                        )}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {history.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <Calendar size={48} className="mx-auto mb-4" />
+                        <p>Aucune analyse dans l'historique</p>
+                        <p className="text-sm">Commencez une analyse pour voir vos tendances</p>
+                      </div>
+                    ) : (
+                      history.map((entry) => (
+                        <div key={entry.id} className="bg-white border border-gray-200 rounded-lg p-4">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <h4 className="font-semibold text-gray-800">
+                                {entry.correctedState || entry.state}
+                                {entry.correctedState && (
+                                  <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                                    Corrigé
+                                  </span>
+                                )}
+                                {entry.isLearned && (
+                                  <span className="ml-2 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                                    Appris
+                                  </span>
+                                )}
+                              </h4>
+                              <p className="text-sm text-gray-600">{formatDate(entry.date)}</p>
+                            </div>
+                            <div className="text-right">
+                              <div className="flex items-center">
+                                <span className={`text-xs px-2 py-1 rounded ${
+                                  entry.isCorrect ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                }`}>
+                                  {entry.isCorrect ? '✓ Correct' : '✗ Incorrect'}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Confiance: {entry.confidence}%
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {(phase === 'result' || phase === 'history') && (
+                <div className="mt-6 text-center">
+                  <button
+                    onClick={restart}
+                    className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                  >
+                    <RotateCcw size={16} className="mr-2" />
+                    Nouvelle analyse
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        ReactDOM.render(<EmotionDetector />, document.getElementById('root'));
+    </script>
+</body>
+</html>

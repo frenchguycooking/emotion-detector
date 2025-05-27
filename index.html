@@ -13,6 +13,13 @@ const EmotionDetector = () => {
   const [learningDB, setLearningDB] = useState([]);
   const [customAnswersDB, setCustomAnswersDB] = useState({});
   const [showTrends, setShowTrends] = useState(false);
+  const [googleDriveConnected, setGoogleDriveConnected] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
+  // Configuration Google Drive - VOS IDENTIFIANTS SÉCURISÉS
+  const GOOGLE_CLIENT_ID = '829427849836-a1pi07g2qgt73874te51at84d62jfqk7.apps.googleusercontent.com';
+  const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
+  const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
   // Charger l'historique au démarrage
   useEffect(() => {
@@ -31,6 +38,174 @@ const EmotionDetector = () => {
     }
   }, []);
 
+  // Initialisation Google Drive
+  useEffect(() => {
+    const initializeGapi = async () => {
+      try {
+        if (window.gapi) {
+          await new Promise((resolve) => {
+            window.gapi.load('auth2', resolve);
+          });
+          
+          window.gapi.auth2.init({
+            client_id: GOOGLE_CLIENT_ID,
+          });
+          
+          await new Promise((resolve) => {
+            window.gapi.load('client', resolve);
+          });
+          
+          await window.gapi.client.init({
+            discoveryDocs: [DISCOVERY_DOC],
+          });
+          
+          // Vérifier si déjà connecté
+          const authInstance = window.gapi.auth2.getAuthInstance();
+          if (authInstance && authInstance.isSignedIn.get()) {
+            setGoogleDriveConnected(true);
+            await loadFromGoogleDrive();
+          }
+        }
+      } catch (error) {
+        console.log('Google Drive non disponible:', error);
+      }
+    };
+
+    // Attendre que gapi soit chargé
+    if (window.gapi) {
+      initializeGapi();
+    } else {
+      const checkGapi = setInterval(() => {
+        if (window.gapi) {
+          clearInterval(checkGapi);
+          initializeGapi();
+        }
+      }, 100);
+    }
+  }, []);
+
+  // Connexion à Google Drive
+  const connectGoogleDrive = async () => {
+    setIsGoogleLoading(true);
+    try {
+      const authInstance = window.gapi.auth2.getAuthInstance();
+      const user = await authInstance.signIn({
+        scope: SCOPES
+      });
+      
+      if (user.isSignedIn()) {
+        setGoogleDriveConnected(true);
+        await loadFromGoogleDrive();
+        alert('✅ Connecté à Google Drive ! Vos données seront automatiquement sauvegardées.');
+      }
+    } catch (error) {
+      alert('❌ Erreur de connexion à Google Drive: ' + error.message);
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
+
+  // Déconnexion Google Drive
+  const disconnectGoogleDrive = async () => {
+    try {
+      const authInstance = window.gapi.auth2.getAuthInstance();
+      await authInstance.signOut();
+      setGoogleDriveConnected(false);
+      alert('🔌 Déconnecté de Google Drive. Les données locales sont conservées.');
+    } catch (error) {
+      console.error('Erreur déconnexion:', error);
+    }
+  };
+
+  // Sauvegarder dans Google Drive
+  const saveToGoogleDrive = async () => {
+    if (!googleDriveConnected) return;
+    
+    try {
+      const dataToSave = {
+        history,
+        learningDB,
+        customAnswersDB,
+        lastSync: new Date().toISOString(),
+        version: "1.0"
+      };
+      
+      // Chercher si le fichier existe déjà
+      const response = await window.gapi.client.drive.files.list({
+        q: "name='emotion-detector-data.json' and parents in 'appDataFolder'",
+        spaces: 'appDataFolder'
+      });
+      
+      const fileMetadata = {
+        name: 'emotion-detector-data.json',
+        parents: ['appDataFolder']
+      };
+      
+      const form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify(fileMetadata)], {type: 'application/json'}));
+      form.append('file', new Blob([JSON.stringify(dataToSave, null, 2)], {type: 'application/json'}));
+      
+      const accessToken = window.gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().access_token;
+      
+      let uploadResponse;
+      if (response.result.files.length > 0) {
+        // Mettre à jour le fichier existant
+        const fileId = response.result.files[0].id;
+        uploadResponse = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: form
+        });
+      } else {
+        // Créer un nouveau fichier
+        uploadResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: form
+        });
+      }
+      
+      if (uploadResponse.ok) {
+        console.log('✅ Données sauvegardées dans Google Drive');
+      }
+    } catch (error) {
+      console.error('❌ Erreur sauvegarde Google Drive:', error);
+    }
+  };
+
+  // Charger depuis Google Drive
+  const loadFromGoogleDrive = async () => {
+    if (!googleDriveConnected) return;
+    
+    try {
+      const response = await window.gapi.client.drive.files.list({
+        q: "name='emotion-detector-data.json' and parents in 'appDataFolder'",
+        spaces: 'appDataFolder'
+      });
+      
+      if (response.result.files.length > 0) {
+        const fileId = response.result.files[0].id;
+        const fileResponse = await window.gapi.client.drive.files.get({
+          fileId: fileId,
+          alt: 'media'
+        });
+        
+        const data = JSON.parse(fileResponse.body);
+        if (data.history) setHistory(data.history);
+        if (data.learningDB) setLearningDB(data.learningDB);
+        if (data.customAnswersDB) setCustomAnswersDB(data.customAnswersDB);
+        
+        console.log('✅ Données chargées depuis Google Drive');
+      }
+    } catch (error) {
+      console.error('❌ Erreur chargement Google Drive:', error);
+    }
+  };
+
   // Sauvegarder automatiquement
   useEffect(() => {
     if (history.length > 0) {
@@ -44,11 +219,16 @@ const EmotionDetector = () => {
     }
   }, [learningDB]);
 
+  // Auto-sauvegarde à chaque modification
   useEffect(() => {
-    if (Object.keys(customAnswersDB).length > 0) {
-      localStorage.setItem('emotion-custom-answers', JSON.stringify(customAnswersDB));
+    if (googleDriveConnected && (history.length > 0 || learningDB.length > 0)) {
+      const timer = setTimeout(() => {
+        saveToGoogleDrive();
+      }, 2000); // Sauvegarde 2 secondes après modification
+      
+      return () => clearTimeout(timer);
     }
-  }, [customAnswersDB]);
+  }, [history, learningDB, customAnswersDB, googleDriveConnected]);
 
   // Base de questions dynamique
   const getDynamicQuestions = () => {
@@ -560,7 +740,41 @@ const EmotionDetector = () => {
             <History size={16} className="mr-2" />
             Historique ({history.length})
           </button>
+          <button
+            onClick={googleDriveConnected ? disconnectGoogleDrive : connectGoogleDrive}
+            disabled={isGoogleLoading}
+            className={`px-4 py-2 rounded-lg flex items-center ${
+              googleDriveConnected 
+                ? 'bg-green-600 text-white' 
+                : 'bg-yellow-600 text-white hover:bg-yellow-700'
+            } ${isGoogleLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {isGoogleLoading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Connexion...
+              </>
+            ) : googleDriveConnected ? (
+              <>
+                <CheckCircle size={16} className="mr-2" />
+                Drive ✓
+              </>
+            ) : (
+              <>
+                <Brain size={16} className="mr-2" />
+                Connecter Drive
+              </>
+            )}
+          </button>
         </div>
+        
+        {googleDriveConnected && (
+          <div className="text-center mt-2">
+            <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded">
+              🔄 Sauvegarde automatique activée
+            </span>
+          </div>
+        )}
       </div>
 
       {phase === 'questioning' && (
